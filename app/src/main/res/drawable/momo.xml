@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animation-list    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:oneshot="false">
+    <item
+        android:drawable="@drawable/momo_1"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_2"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_3"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_4"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_5"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_6"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_7"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_8"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_9"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_11"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_12"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_13"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_14"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_15"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_16"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_17"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_18"
+        android:duration="30" />
+    <item
+        android:drawable="@drawable/momo_19"
+        android:duration="30" />
+</animation-list>

@@ -33,6 +33,11 @@ public class Dbase extends SQLiteOpenHelper {
                         + "name text,"
                         + "directory text,"
                         + "namefile text," + "timesum text" + ");");
+                db.execSQL("create table login ("
+                        + "id integer primary key autoincrement,"
+                        + "nameftp text,"
+                        + "login text,"
+                        + "password text" + ");");
         }
 
         @Override
@@ -81,5 +86,52 @@ public class Dbase extends SQLiteOpenHelper {
                 cv.put("namefile", namefile);
                 cv.put("timesum", "null");
                 return  db.insert("mytable", null, cv);
+        }
+        public ArrayList<LoginItem> LoginItems() {
+                ArrayList<LoginItem> toRet = new ArrayList<LoginItem>();
+                SQLiteDatabase db = getReadableDatabase();
+                Cursor c = db.query("login", null, null, null, null, null, null);
+                c.moveToFirst();
+
+                while (c.isAfterLast() == false) {
+                        toRet.add(new LoginItem(c.getString(c.getColumnIndex("nameftp")),c.getString(c.getColumnIndex("login")),c.getString(c.getColumnIndex("password"))));
+                        c.moveToNext();
+
+                }
+                db.close();
+
+                return toRet;
+        }
+        public Long LoginItem(String nameftp,String login,String password) {
+                SQLiteDatabase db = getWritableDatabase();
+                ContentValues cv = new ContentValues();
+                cv.put("nameftp", nameftp);
+                cv.put("login", login);
+                cv.put("password", password);
+                return  db.insert("login", null, cv);
+        }
+        public boolean EmptyLogin()
+        {
+                boolean b = false;
+                SQLiteDatabase db = getWritableDatabase();
+                Cursor ct = db.query("login", null, null, null, null, null, null);
+                if (ct.getCount()==0)
+                        b=true;
+                db.close();
+                return b;
+        }
+        public void DeleteAll()
+        {
+                SQLiteDatabase db = getWritableDatabase();
+                db.delete("login",null,null);
+        }
+        public void UpdateItem(String name,String dir,String namefile)
+        {
+                SQLiteDatabase db = getWritableDatabase();
+                ContentValues cv = new ContentValues();
+                cv.put("directory", dir);
+                cv.put("namefile", namefile);
+                db.update("mytable",cv,"name=?",new String[]{name});
+                db.close();
         }
 }

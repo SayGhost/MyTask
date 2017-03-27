@@ -58,9 +58,9 @@ public class DownloaderAdd extends AsyncTask<String,Void,String>
         Cursor c = db.query("mytable", null, null, null, null, null, null);
         String sr = null;
         try {
-            mFTP.connect("u376506.ftp.masterhost.ru");
+            mFTP.connect(params[0]);
 
-            if (!mFTP.login("u376506_tomb", "coningshern7ur")) {
+            if (!mFTP.login(params[1], params[2])) {
                 str = "Ошибка авторизации";
             }
 

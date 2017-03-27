@@ -6,6 +6,7 @@ package com.example.mytask;
 
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
@@ -105,14 +106,31 @@ public class RecyclerAdapter extends RecyclerView.Adapter<RecyclerAdapter.ViewHo
         timesum1.setText(dataSet.get(listPosition).getTimesum());
         holder.v.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
-            public boolean onLongClick(View v) {
+            public boolean onLongClick(final View v) {
+                final String[] item = {"Изменить", "Удалить"};
+                AlertDialog.Builder builder = new AlertDialog.Builder(v.getContext());
+                        builder.setItems(item, new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog, int which) {
+                                final Intent intent;
+                                if (item[which].equals("Изменить")) {
+                                    intent =  new Intent(v.getContext(), Change.class);
+                                    intent.putExtra("MName",dataSet.get(listPosition).getName());
+                                    v.getContext().startActivity(intent);
+                                }
+                                if (item[which].equals("Удалить")) {
+                                    Delete(v);
+                                }
+                            }
+                        });
+                AlertDialog dialog = builder.create();
+                dialog.show();
+                return true;
+            }
+
+            public void Delete(View v) {
                 dHelper = new Dbase(v.getContext());
                 AlertDialog.Builder adb = new AlertDialog.Builder(v.getContext());
-                adb.setTitle(R.string.exit);
-                // сообщение
-                adb.setMessage(R.string.save_data);
-                // иконка
-                //adb.setIcon(android.R.drawable.ic_dialog_info);
+                adb.setMessage("Вы действительно хотите удалить "+dataSet.get(listPosition).getName()+" ?");
                 // кнопка положительного ответа
                 adb.setPositiveButton(R.string.yes, new DialogInterface.OnClickListener(){
                     public void onClick(DialogInterface dialog, int which)
@@ -139,10 +157,10 @@ public class RecyclerAdapter extends RecyclerView.Adapter<RecyclerAdapter.ViewHo
                 });
                 AlertDialog dialog = adb.create();
                 dialog.show();
-                return true;
             }
         });
     }
+
     // Возвращает размер данных (вызывается layout manager-ом)
     @Override
     public int getItemCount() {

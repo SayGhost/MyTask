@@ -1,7 +1,6 @@
 package com.example.mytask;
 
 import android.content.Intent;
-import android.database.Cursor;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.support.v4.widget.SwipeRefreshLayout;
@@ -9,36 +8,37 @@ import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.DefaultItemAnimator;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.ProgressBar;
-import android.widget.TextView;
+
+import java.util.ArrayList;
 
 
-
-
-public class MainActivity extends AppCompatActivity  {
+public class MainActivity extends AppCompatActivity {
     private static RecyclerView mRecyclerView;
-    private static RecyclerView.Adapter mAdapter;
     private RecyclerView.LayoutManager mLayoutManager;
     private static SwipeRefreshLayout swipeRefreshLayout;
     private static ProgressBar mProgressBar;
+    ArrayList<LoginItem> dataSet=new ArrayList<LoginItem>();
     Dbase dHelper;
 
-    Cursor c;
-    String ftp ="u376506.ftp.masterhost.ru";
-    String login="u376506_tomb";
-    String password="coningshern7ur";
+    String ftp =null;
+    String login=null;
+    String password=null;
 
     final String LOG_TAG = "myLogs";
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        TextView btn = (TextView) findViewById(R.id.buttonHello);
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        toolbar.getBackground().setAlpha(200);
         swipeRefreshLayout= (SwipeRefreshLayout) findViewById(R.id.swipe);
         swipeRefreshLayout.setColorSchemeColors(new Color().rgb(28,134,238));
-        swipeRefreshLayout.setDistanceToTriggerSync(400);
+        swipeRefreshLayout.setDistanceToTriggerSync(300);
         dHelper=new Dbase(this);
         mRecyclerView = (RecyclerView) findViewById(R.id.my_recycler_view);
         mRecyclerView.setHasFixedSize(true);
@@ -46,12 +46,13 @@ public class MainActivity extends AppCompatActivity  {
         mRecyclerView.setLayoutManager(mLayoutManager);
         mRecyclerView.setItemAnimator(new DefaultItemAnimator());
         mProgressBar=(ProgressBar)findViewById(R.id.progressBar);
-        new DownloaderAdd(MainActivity.this,mRecyclerView,mProgressBar,getCacheDir()+"").execute(ftp,login,password);
+        dataSet = dHelper.LoginItems();
+        new DownloaderAdd(MainActivity.this,mRecyclerView,mProgressBar,getCacheDir()+"").execute(dataSet.get(0).getNameftp(),dataSet.get(0).getLogin(),dataSet.get(0).getPassword());
         swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
             @Override
             public void onRefresh() {
 
-                new Downloader(MainActivity.this,mRecyclerView,swipeRefreshLayout,getCacheDir()+"").execute(ftp,login,password);
+                new Downloader(MainActivity.this,mRecyclerView,swipeRefreshLayout,getCacheDir()+"").execute(dataSet.get(0).getNameftp(),dataSet.get(0).getLogin(),dataSet.get(0).getPassword());
 
 
             }
@@ -76,17 +77,18 @@ public class MainActivity extends AppCompatActivity  {
 
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_add) {
-            startActivityForResult(new Intent(this, Add.class),1);
+            Intent intent = new Intent(this, Add.class);
+            startActivity(intent);
+            finish();
+        }
+        if (id == R.id.action_disconnect) {
+            dHelper.DeleteAll();
+            Intent intent = new Intent(this, ConnectActivity.class);
+            startActivity(intent);
         }
 
+
         return super.onOptionsItemSelected(item);
-    }
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode,Intent data) {
-        super.onActivityResult(requestCode, resultCode,data);
-        if (requestCode == 1 && resultCode == RESULT_OK) {
-            new DownloaderAdd(MainActivity.this,mRecyclerView,mProgressBar,getCacheDir()+"").execute(ftp,login,password);
-        }
     }
 
 }

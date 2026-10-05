@@ -191,7 +191,7 @@ def test_sales_events(tmp_path):
     ], header=SALES_HDR)
     ev, res = events_of(f)
     by = Counter(e["type"] for e in ev)
-    assert by == Counter(mc_held=2, mc_wait=2, sl_now=2, sl_in=1, sl_out=1, purchase=2, addon=1)
+    assert by == Counter(mc_held=2, mc_skip=2, mc_wait=2, sl_now=2, sl_in=1, sl_out=1, purchase=2, addon=1)
     assert sorted(e["date"] for e in ev if e["type"] == "mc_held") == ["2026-03-05", "2026-03-06"]
     waits = sorted(e["date"] for e in ev if e["type"] == "mc_wait")
     assert waits == ["2026-03-09", "2026-06-20"]
@@ -269,3 +269,20 @@ def test_events_before_lead_creation_are_dropped_and_reported(tmp_path):
     kinds = Counter(res.event_dicts["type"][e[0]] for e in res.event_rows)
     assert kinds["lead"] == 2 and kinds["qual"] == 1
     assert any("раньше создания лида" in w and "квал — 1" in w for w in res.meta["warnings"])
+
+
+def test_mc_notes_explain_every_decision(tmp_path):
+    f = tmp_path / "s.csv"
+    D = "Дата и время МС (квал)"
+    write_rows(f, [
+        sales_row(**{"Стадия сделки": "5 0,1 Греем", D: "05.03.2026 16:00"}),
+        sales_row(**{"Стадия сделки": "Отказ", D: "06.03.2026 16:00", "Причина отказа Продажи": "Нецелевой"}),
+        sales_row(**{"Стадия сделки": "Отказ", D: "07.03.2026 16:00", "Причина отказа Продажи": "Не пришел на БК"}),
+        sales_row(**{"Стадия сделки": "Просроченая сделка", D: "08.03.2026 16:00"}),
+    ], header=SALES_HDR)
+    ev, _ = events_of(f)
+    notes = {(e["type"], e["note"]) for e in ev}
+    assert ("mc_held", "5 0,1 Греем") in notes
+    assert ("mc_held", "Отказ: МС была (Нецелевой)") in notes
+    assert ("mc_skip", "Отказ: МС не состоялась (Не пришел на БК)") in notes
+    assert ("mc_skip", "Просроченая сделка: стадия не из списка «проведена»") in notes

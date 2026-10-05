@@ -196,3 +196,16 @@ test('filterEvents: группы и только новые', () => {
   assert.equal(M.filterEvents(events, { dealType: 'new' })[0].isNew, 1);
   assert.equal(M.filterEvents(events, { dealType: 'all' }).length, 2);
 });
+
+test('mcBreakdown: посчитано и не посчитано по пояснениям', () => {
+  const events = [
+    ev('mc_held', '2026-03-05', '2026-03-01', { note: '5 0,1 Греем' }), ev('mc_held', '2026-03-06', '2026-03-01', { note: '5 0,1 Греем' }),
+    ev('mc_skip', '2026-03-07', '2026-03-01', { note: 'Просроченая сделка: стадия не из списка' }), ev('mc_held', '2026-04-07', '2026-03-01', { note: 'вне периода' }),
+    ev('mc_wait', '2026-03-08', '2026-03-01', { note: '0 МС назначена' }),   // дата прошла: не посчитана
+    ev('mc_wait', '2026-03-25', '2026-03-01', { note: '0 МС назначена' }),   // МС ещё впереди: к сверке не относится
+  ];
+  const b = M.mcBreakdown(events, { from: '2026-03-01', to: '2026-03-31' }, '2026-03-10');
+  assert.deepEqual(b.counted, [{ note: '5 0,1 Греем', n: 2 }]);
+  assert.equal(b.skipped.reduce((a, x) => a + x.n, 0), 2);
+  assert.ok(b.skipped.some((x) => x.note.includes('0 МС назначена: дата МС прошла')));
+});

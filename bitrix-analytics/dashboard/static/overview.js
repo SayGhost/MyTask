@@ -173,6 +173,17 @@ window.Overview = (function () {
         h('li', {}, 'МС считается проведённой по правилу из «Как считаются показатели» (стадия, дата МС, причина отказа).'));
     }
 
+    function renderMcBreakdown() {
+      const b = M.mcBreakdown(cur.ev, cur.range, asOf);
+      const total = (x) => x.reduce((a, r) => a + r.n, 0);
+      const table = (title, rows, cls) => h('div', { class: 'bd ' + cls },
+        h('h3', { text: `${title}: ${fmtInt(total(rows))}` }),
+        rows.length ? h('table', {}, h('tbody', {}, ...rows.map((r) => h('tr', {}, h('td', { text: r.note }), h('td', { text: fmtInt(r.n) }))))) : h('p', { class: 'hint', text: 'Нет' }));
+      ref.mcBreakdown.replaceChildren(
+        table('Посчитано как проведённые', b.counted, 'ok'),
+        table('Не посчитано', b.skipped, 'no'));
+    }
+
     // ---------- SL ----------
     function renderSl() {
       const t = cur.t, p = cur.p, sl = t.sl;
@@ -261,7 +272,7 @@ window.Overview = (function () {
       Object.assign(ref, {
         pulse: h('div', { class: 'kpis kpis-6' }), flowLegend: h('div', { class: 'legend' }), flowGrid: h('div', { class: 'grid-2 flow-grid' }),
         cohort: h('div'), cohortTabs: h('div', { class: 'seg multi', role: 'group', 'aria-label': 'Событие' }),
-        mcBars: h('div', { class: 'chart' }), mcNote: h('ul', { class: 'bullets' }),
+        mcBars: h('div', { class: 'chart' }), mcNote: h('ul', { class: 'bullets' }), mcBreakdown: h('div', { class: 'grid-2' }),
         slTiles: h('div', { class: 'kpis kpis-4' }), slIn: h('div', { class: 'chart' }), slOut: h('div', { class: 'chart' }), slNote: h('p', { class: 'hint' }),
         salesTiles: h('div', { class: 'kpis kpis-5' }), buyAmount: h('div', { class: 'chart' }), buyCount: h('div', { class: 'chart' }), buyGroups: h('div', { class: 'chart' }),
         matSl: h('div', { class: 'chart' }), matMc: h('div', { class: 'chart' }), matNote: h('p', { class: 'hint' }),
@@ -285,7 +296,8 @@ window.Overview = (function () {
           withTools(card('Как быстро лиды доходят до этапа', 'Строка: лиды, созданные в неделю. Столбец: через сколько недель после создания случилось событие. Последние 12 недель', ref.cohortTabs, ref.cohort),
             h('label', { class: 'check' }, pct, 'В процентах от лидов'))),
         section('o-mc', 'МС: записаны, проведены, ожидают',
-          h('div', { class: 'grid-2' }, card('Воронка МС', 'Записи и проведённые за период, ожидающие и зависшие на сегодня', ref.mcBars), card('Как читать', null, ref.mcNote))),
+          h('div', { class: 'grid-2' }, card('Воронка МС', 'Записи и проведённые за период, ожидающие и зависшие на сегодня', ref.mcBars), card('Как читать', null, ref.mcNote)),
+          card('Из чего сложилось «МС проведено»', 'Все сделки с датой МС в выбранном периоде: что посчитано и что нет, и по какой причине. Для сверки с вашим подсчётом', ref.mcBreakdown)),
         section('o-sl', 'SL лиды', ref.slTiles,
           h('div', { class: 'grid-2' }, card('Стали SL', 'По дате изменения SL', ref.slIn), card('Ушли из SL', 'По дате изменения SL', ref.slOut)), card('Важно', null, ref.slNote)),
         section('o-sales', 'Продажи', ref.salesTiles,
@@ -299,7 +311,7 @@ window.Overview = (function () {
       root.classList.remove('no-anim');
       compute();
       F.sync(cur);
-      renderPulse(); renderFlows(); renderCohorts(); renderMc(); renderSl(); renderSales(); renderMaterials();
+      renderPulse(); renderFlows(); renderCohorts(); renderMc(); renderMcBreakdown(); renderSl(); renderSales(); renderMaterials();
     }
     function resize() {
       if (!cur) return;

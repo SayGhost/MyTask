@@ -337,6 +337,20 @@
     return { booked, held, upcoming, nextWeek, stale, staleInPeriod };
   }
 
+  /** Из чего сложилось «МС проведено»: посчитано и не посчитано, по пояснениям (стадия / причина). */
+  function mcBreakdown(events, range, asOf) {
+    const counted = new Map(), skipped = new Map();
+    const add = (map, note) => map.set(note, (map.get(note) || 0) + 1);
+    for (const e of events) {
+      if (!inRange(e.date, range)) continue;
+      if (e.type === 'mc_held') add(counted, e.note);
+      else if (e.type === 'mc_skip') add(skipped, e.note);
+      else if (e.type === 'mc_wait' && e.date <= asOf) add(skipped, `${e.note}: дата МС прошла, а сделка не продвинулась`);
+    }
+    const list = (m) => [...m.entries()].map(([note, n]) => ({ note, n })).sort((a, b) => b.n - a.n || a.note.localeCompare(b.note, 'ru'));
+    return { counted: list(counted), skipped: list(skipped) };
+  }
+
   /** SL: стали и ушли за период (по дате изменения), сейчас в SL всего и сколько из них без даты входа. */
   function slStats(events, range) {
     let inN = 0, outN = 0, now = 0, datedIn = 0;
@@ -363,7 +377,7 @@
   }
 
   return {
-    decodeEvents, filterEvents, flowTotals, flowSeries, cohortMatrix, mcPipeline, slStats, purchaseStats,
+    decodeEvents, filterEvents, flowTotals, flowSeries, cohortMatrix, mcPipeline, mcBreakdown, slStats, purchaseStats,
     decode, filterDeals, summarize, scoreLabel, STAR_ORDER, GRADE_ORDER, rates, ratio, delta, deltaPP, series, seriesBy, countBy, buildTree,
     bucketStart, nextBucket, bucketEnd, autoGranularity, presetRange, comparePeriod, addDays, addMonths, daysBetween,
   };

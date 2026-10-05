@@ -25,10 +25,11 @@ FIELDS = [
 STRING_FIELDS = [f for f in FIELDS if f not in ("isNew", "webinar", "reached", "qual", "mc", "mcRequest", "failed")]
 
 # События для «Общего» дашборда: одна строка = одно событие в жизни сделки.
-# type: lead, qual, mc_booked, mc_held, mc_wait, sl_in, sl_out, sl_now, purchase, addon.
+# type: lead, qual, mc_booked, mc_held, mc_wait, mc_skip, sl_in, sl_out, sl_now, purchase, addon.
+# note: пояснение для сверки (стадия или причина отказа), у событий МС.
 # date: дата события; lead: дата создания лида (когорта); amount: сумма покупки.
-EVENT_FIELDS = ["type", "date", "lead", "group", "source", "isNew", "amount", "matMc", "matSl", "utm"]
-EVENT_STRING_FIELDS = ["type", "date", "lead", "group", "source", "matMc", "matSl", "utm"]
+EVENT_FIELDS = ["type", "date", "lead", "group", "source", "isNew", "amount", "matMc", "matSl", "utm", "note"]
+EVENT_STRING_FIELDS = ["type", "date", "lead", "group", "source", "matMc", "matSl", "utm", "note"]
 
 _DATE_RE = re.compile(r"^\s*(\d{1,2})\.(\d{1,2})\.(\d{4})")
 
@@ -193,14 +194,14 @@ def load_deals(path: Path) -> LoadResult:
             status, reason = cell(row, "status"), cell(row, "reason")
             portrait = cell(row, "portrait")
             group, is_new, utm = classify_source(source), int(_norm(cell(row, "deal_type")) == new_value), cell(row, "utm_source")
-            result.events.append(["lead", created, created, group, source, is_new, 0, "", "", utm])
+            result.events.append(["lead", created, created, group, source, is_new, 0, "", "", utm, ""])
             qual_date = parse_date(cell(row, "qual"))
             if qual_date:
-                result.events.append(["qual", qual_date, created, group, source, is_new, 0, "", "", utm])
+                result.events.append(["qual", qual_date, created, group, source, is_new, 0, "", "", utm, ""])
             if _norm(status) in booked:
                 booked_date = parse_date(cell(row, "close_date")) or parse_date(cell(row, "stage_changed"))
                 if booked_date:
-                    result.events.append(["mc_booked", booked_date, created, group, source, is_new, 0, cell(row, "mat_mc"), "", utm])
+                    result.events.append(["mc_booked", booked_date, created, group, source, is_new, 0, cell(row, "mat_mc"), "", utm, ""])
             result.rows.append([
                 created,
                 group,
@@ -315,19 +316,27 @@ def load_sales(path: Path, as_of_min: str) -> LoadResult:
     for p in parsed:
         group, is_new, stage = classify_source(p["source"]), int(_norm(p["type"]) == new_value), _norm(p["stage"])
 
-        def ev(kind, date, amount=0.0):
-            result.events.append([kind, date, p["lead"], group, p["source"], is_new, amount, p["mat_mc"], p["mat_sl"], p["utm"]])
+        def ev(kind, date, amount=0.0, note=""):
+            result.events.append([kind, date, p["lead"], group, p["source"], is_new, amount, p["mat_mc"], p["mat_sl"], p["utm"], note])
 
         mc = p["mc_date"]
         if mc:
+            stage_name = p["stage"] or "без стадии"
+            why = p["reason"] or "без причины"
             if mc <= as_of:
-                held = stage in held_stages or (stage == refused and not mc_not_held(p["reason"], p["result"]))
-                if held:
-                    ev("mc_held", mc)
+                if stage in held_stages:
+                    ev("mc_held", mc, note=stage_name)
+                elif stage == refused:
+                    if mc_not_held(p["reason"], p["result"]):
+                        ev("mc_skip", mc, note=f"{stage_name}: МС не состоялась ({why})")
+                    else:
+                        ev("mc_held", mc, note=f"{stage_name}: МС была ({why})")
                 elif stage in wait_stages:
-                    ev("mc_wait", mc)  # дата прошла, а МС не состоялась и сделка не движется
+                    ev("mc_wait", mc, note=stage_name)  # дата прошла, а МС не состоялась и сделка не движется
+                else:
+                    ev("mc_skip", mc, note=f"{stage_name}: стадия не из списка «проведена»")
             elif stage in wait_stages or stage in held_stages:
-                ev("mc_wait", mc)      # МС ещё впереди
+                ev("mc_wait", mc, note=stage_name)      # МС ещё впереди
         sl = _norm(p["sl"])
         if sl == sl_yes:
             ev("sl_now", p["sl_date"] or p["created"])
@@ -404,7 +413,7 @@ def load_files(chosen: dict[str, Path], warnings: list[str] | None = None) -> Lo
     clean = [e for e in result.events if e[0] in ("lead", "sl_now") or e[1] >= e[2]]
     dropped = Counter(e[0] for e in result.events if not (e[0] in ("lead", "sl_now") or e[1] >= e[2]))
     if dropped:
-        names = {"qual": "квал", "mc_booked": "запись на МС", "mc_held": "МС проведена", "mc_wait": "МС ожидает", "sl_in": "вход в SL", "sl_out": "выход из SL", "purchase": "покупка", "addon": "доп. продукт"}
+        names = {"qual": "квал", "mc_booked": "запись на МС", "mc_held": "МС проведена", "mc_wait": "МС ожидает", "mc_skip": "МС не проведена", "sl_in": "вход в SL", "sl_out": "выход из SL", "purchase": "покупка", "addon": "доп. продукт"}
         warnings.append("Пропущены события с датой раньше создания лида (ошибка данных): " + ", ".join(f"{names.get(k, k)} — {n}" for k, n in dropped.items()) + ".")
     result.events = clean
     for name in EVENT_STRING_FIELDS:

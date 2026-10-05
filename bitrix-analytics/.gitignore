@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 backups/
+
+# Выгрузки с данными клиентов никогда не коммитим
+*.csv
+*.xlsx
+*.xls
+dashboard/data/*
+!dashboard/data/.gitkeep

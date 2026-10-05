@@ -7,11 +7,10 @@
 
   // Реестр дашбордов. Позже здесь же появятся права доступа (кто какой дашборд видит).
   const DASHBOARDS = [
-    { id: 'overview', title: 'Общий', icon: 'overview', status: 'planned', header: 'Общий дашборд',
-      plan: ['Сводка по всей воронке: лиды, МС, продажи, выручка', 'Динамика по неделям и месяцам, сравнение периодов', 'Ключевые показатели маркетинга и отдела продаж на одном экране', 'Нужны данные о проведённых МС и оплатах (они лежат в другой воронке)'] },
+    { id: 'overview', title: 'Общий', icon: 'overview', status: 'ready', header: 'Общий дашборд' },
     { id: 'marketing', title: 'Маркетинговый', icon: 'marketing', status: 'ready', header: 'Маркетинговый дашборд' },
     { id: 'sales', title: 'Отдел продаж', icon: 'sales', status: 'planned', header: 'Дашборд отдела продаж',
-      plan: ['Работа менеджеров и консультантов: взято в работу, скорость реакции, дозвоны', 'Квалы и МС по консультантам и коучам', 'Проведённые МС, продажи, выручка по менеджерам', 'Нужны данные о проведённых МС и оплатах (другая воронка)'] },
+      plan: ['Работа менеджеров и консультантов: взято в работу, скорость реакции, дозвоны', 'Квалы и МС по консультантам и коучам', 'Проведённые МС, продажи, выручка по менеджерам'] },
     { id: 'access', title: 'Доступы', icon: 'access', status: 'planned', header: 'Управление доступом',
       plan: ['Роли: администратор, команда, внешние подрядчики', 'Для каждого человека выбирается, какие дашборды он видит', 'Администратор выдаёт и забирает доступ в один клик', 'Вход по логину и паролю, работает после переноса системы на сервер (VPS)'] },
   ];
@@ -54,12 +53,16 @@
   }
   function mount(d) {
     $('#title').textContent = d.header;
-    $('#subtitle').textContent = data ? `Атрибуция по дате создания лида · данные по ${UI.fmtDay(data.meta.dateMax)}` : '';
+    $('#subtitle').textContent = data ? (d.id === 'overview'
+      ? `Поток по дате события, разбивка по дате создания лида · данные по ${UI.fmtDay(data.meta.asOf || data.meta.dateMax)}`
+      : `Атрибуция по дате создания лида · данные по ${UI.fmtDay(data.meta.dateMax)}`) : '';
     const view = $('#view');
     mounted = null;
     if (!data) return;
     if (d.status === 'planned') return view.replaceChildren(planned(d));
-    mounted = window.Marketing.create({ deals: data.deals, meta: data.meta });
+    mounted = d.id === 'overview'
+      ? window.Overview.create({ events: data.events, meta: data.meta })
+      : window.Marketing.create({ deals: data.deals, meta: data.meta });
     [...mounted.el.children].forEach((c, i) => c.style.setProperty('--i', i));
     view.replaceChildren(mounted.el);
     mounted.update();
@@ -91,9 +94,10 @@
       payload = await res.json();
     } catch (e) { data = null; return showError('Сервер не отвечает. Запущена ли программа?'); }
     if (payload.error) { data = null; return showError(payload.error); }
-    data = { deals: M.decode(payload), meta: payload.meta };
+    data = { deals: M.decode(payload), meta: payload.meta, events: M.decodeEvents(payload.events) };
     const m = data.meta;
-    $('#file-meta').textContent = `Файл: ${m.file}. Загружено сделок: ${UI.fmtInt(m.rowsUsed)} из ${UI.fmtInt(m.rowsTotal)}` +
+    const files = (m.files || []).map((f) => `${f.funnel}: ${f.name} (${UI.fmtInt(f.rows)})`).join('; ');
+    $('#file-meta').textContent = `Файлы: ${files || m.file}. Лидов в «Консультантах»: ${UI.fmtInt(m.rowsUsed)} из ${UI.fmtInt(m.rowsTotal)}` +
       (m.rowsSkipped ? `, пропущено без даты создания: ${UI.fmtInt(m.rowsSkipped)}` : '') + (m.warnings.length ? '. ' + m.warnings.join(' ') : '');
     activeId = null;
     render(false);

@@ -85,9 +85,9 @@ window.UI = (function () {
     const m = rough / p;
     return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
   }
-  function axis(max, want) {
+  function axis(max, want, integer) {
     if (!(max > 0)) return { max: 1, ticks: [0, 1] };
-    const step = Math.max(niceStep(max / want), 1e-9);
+    const step = Math.max(integer ? Math.max(1, niceStep(max / want)) : niceStep(max / want), 1e-9);
     const top = Math.ceil(max / step - 1e-9) * step;
     const ticks = [];
     for (let v = 0; v <= top + step / 2; v += step) ticks.push(+v.toFixed(6));
@@ -134,7 +134,8 @@ window.UI = (function () {
     if (!total) return empty(box);
     const W = width(box), H = opts.height || 260;
     const max = opts.percent ? 100 : Math.max(...buckets.map((b) => b.total));
-    const f = plotFrame(W, H, axis(max, 4), (v) => (opts.percent ? v + '%' : fmtInt(v)));
+    const fv = opts.fmtValue || fmtInt;
+    const f = plotFrame(W, H, axis(max, 4, !opts.percent), (v) => (opts.percent ? v + '%' : (opts.fmtTick || fmtInt)(v)));
     xLabels(f, buckets, opts.gran);
     const band = f.pw / buckets.length, bw = Math.min(28, Math.max(band - 2, 2));
     buckets.forEach((b, i) => {
@@ -142,8 +143,8 @@ window.UI = (function () {
       const g = s('g', partial ? { opacity: 0.6 } : {});
       const title = bucketTitle(b, opts.gran) + (partial ? ' (неполный)' : '');
       const parts = series.map((sr) => ({ sr, n: b.by[sr.key] || 0 })).filter((p) => p.n > 0);
-      const rows = [{ label: 'Всего', value: fmtInt(b.total) }, ...parts.map((p) => ({ color: p.sr.color, label: p.sr.label, value: fmtInt(p.n), sub: fmtPct(p.n / b.total) }))];
-      const hit = s('rect', { x: cx - band / 2, y: f.m.t, width: band, height: f.ph, class: 'hit', tabindex: 0, 'aria-label': `${title}: ${fmtInt(b.total)}` });
+      const rows = [{ label: 'Всего', value: fv(b.total) }, ...parts.map((p) => ({ color: p.sr.color, label: p.sr.label, value: fv(p.n), sub: fmtPct(p.n / b.total) }))];
+      const hit = s('rect', { x: cx - band / 2, y: f.m.t, width: band, height: f.ph, class: 'hit', tabindex: 0, 'aria-label': `${title}: ${fv(b.total)}` });
       bindTip(hit, () => ({ title, rows }), () => g.classList.add('on'), () => g.classList.remove('on'));
       g.append(hit);
       let acc = 0;
@@ -329,6 +330,7 @@ window.UI = (function () {
     if (o.num != null) countUp(val, o.num, fmtInt, o.countFrom); else val.textContent = o.value;
     el.append(h('div', { class: 'label', text: o.label }), val);
     if (o.note) el.append(h('div', { class: 'note' }, ...o.note));
+    if (o.split != null) el.append(h('div', { class: 'splitbar', title: 'Доля из лидов самого периода' }, h('i', { style: `width:${Math.round(o.split * 100)}%` })));
     if (o.delta) el.append(h('div', { class: 'delta-row' }, o.delta));
     if (o.prevText) el.append(h('div', { class: 'prev', text: o.prevText }));
     if (o.spark) el.append(o.spark);

@@ -14,7 +14,7 @@ from tests.synth import PII_MARKERS, write_csv
 def base_url(tmp_path):
     f = tmp_path / "d.csv"
     write_csv(f, n=120)
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(server.DataStore(f)))
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(server.DataStore([f])))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{httpd.server_address[1]}", f
     httpd.shutdown()
@@ -32,6 +32,7 @@ def test_api_returns_compact_rows_without_personal_data(base_url):
     assert status == 200
     assert data["fields"][0] == "created" and len(data["rows"]) == 120
     assert "group" in data["dicts"] and data["meta"]["groups"][-1] == "Другое"
+    assert data["events"]["fields"][0] == "type" and len(data["events"]["rows"]) >= 120 and data["meta"]["hasSales"] is False
     for marker in PII_MARKERS:
         assert marker.encode() not in body
     assert "connect-src 'self'" in headers["Content-Security-Policy"]

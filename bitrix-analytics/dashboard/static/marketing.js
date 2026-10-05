@@ -5,11 +5,6 @@ window.Marketing = (function () {
   const { h, fmtInt, fmtPct, strong } = UI;
 
   const GROUP_COLORS = { 'Вебинарные': 'var(--series-1)', 'Практикум': 'var(--series-2)', 'Мини-продукты': 'var(--series-3)', 'Другое': 'var(--other)' };
-  const PRESETS = [
-    ['thisWeek', 'Эта неделя'], ['lastWeek', 'Прошлая неделя'], ['thisMonth', 'Этот месяц'],
-    ['lastMonth', 'Прошлый месяц'], ['last30', '30 дней'], ['all', 'Всё время'],
-  ];
-  const COMPARE = [['prev', 'С предыдущим периодом'], ['year', 'С тем же периодом прошлого года'], ['custom', 'Со своим периодом'], ['none', 'Без сравнения']];
   const UTM_LEVELS = [['utm_source', 'source'], ['utm_medium', 'medium'], ['utm_campaign', 'campaign'], ['utm_content', 'content'], ['utm_term', 'term']];
   const NONE = '(не указано)';
   const KPIS = [
@@ -38,8 +33,7 @@ window.Marketing = (function () {
     const { deals: all, meta } = ctx;
     const dataEnd = meta.dateMax, dataStart = meta.dateMin;
     const st = {
-      preset: 'lastWeek', range: M.presetRange('lastWeek', dataEnd, dataStart), compare: 'prev', customCompare: null,
-      groups: null, repeats: false, gran: 'auto', table: { leads: false, rates: false },
+      gran: 'auto', table: { leads: false, rates: false },
       scoreDim: 'score', scorePct: false, tree: {}, prevNums: {},
     };
     const root = h('div', { class: 'dash' });
@@ -47,106 +41,23 @@ window.Marketing = (function () {
     let cur = null;
 
     // ---------- расчёт ----------
+    const F = window.Filters.create({
+      state: st, prefix: 'm', dataStart, dataEnd, groups: meta.groups, groupColors: GROUP_COLORS,
+      repeatsLabel: 'Включать повторные сделки', summaryLead: 'Лиды, созданные ',
+      maturityText: 'Последние 7 дней ещё не созрели: дозвон, квал и МС у свежих лидов появляются через несколько дней. Для честного сравнения берите полные недели или месяцы.',
+      onChange: () => update(),
+    });
     const base = () => M.filterDeals(all, { groups: st.groups, onlyNew: !st.repeats });
     const slice = (deals, r) => (r ? deals.filter((d) => d.created >= r.from && d.created <= r.to) : []);
     function compute() {
       const b = base();
       const range = st.range;
-      let cmp = st.compare === 'custom' ? st.customCompare : M.comparePeriod(range, st.preset, st.compare);
-      // период сравнения целиком до начала данных: сравнивать не с чем
-      let cmpNote = null;
-      if (cmp && cmp.to < dataStart) { cmpNote = 'Сравнение недоступно: период сравнения раньше первых данных (' + UI.fmtDay(dataStart) + ').'; cmp = null; }
-      else if (cmp && cmp.from < dataStart) cmpNote = 'Период сравнения начинается раньше данных, поэтому он неполный: цифры «было» занижены.';
+      const { cmp, cmpNote } = F.resolve();
       const now = slice(b, range), prev = cmp ? slice(b, cmp) : null;
       cur = { base: b, range, cmp, cmpNote, now, prev, t: M.summarize(now), pt: prev ? M.summarize(prev) : null };
       cur.r = M.rates(cur.t);
       cur.pr = cur.pt ? M.rates(cur.pt) : null;
       cur.gran = st.gran === 'auto' ? M.autoGranularity(range.from, range.to) : st.gran;
-    }
-
-    // ---------- управление (основная область) ----------
-    function dateInput(id, label) {
-      return h('label', { class: 'dateinput' }, h('span', { class: 'sr-only', text: label }), h('input', { type: 'date', id, min: dataStart, max: dataEnd }));
-    }
-    const inputOf = (box) => box.querySelector('input');
-    function buildControls() {
-      const presets = h('div', { class: 'seg', role: 'group', 'aria-label': 'Период' });
-      for (const [k, t] of PRESETS) {
-        const b = h('button', { type: 'button', text: t, 'data-preset': k });
-        b.addEventListener('click', () => setPreset(k));
-        presets.append(b);
-      }
-      ref.presets = presets;
-
-      const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Группы источников' });
-      for (const g of meta.groups) {
-        const b = h('button', { type: 'button', class: 'chip', 'aria-pressed': 'true' }, h('i', { class: 'dot', style: 'background:' + GROUP_COLORS[g] }), g);
-        b.addEventListener('click', () => {
-          const next = new Set(st.groups || meta.groups);
-          next.has(g) ? next.delete(g) : next.add(g);
-          st.groups = next.size === meta.groups.length ? null : next;
-          update();
-        });
-        chips.append(b);
-      }
-      ref.chips = chips;
-      const rep = h('input', { type: 'checkbox' });
-      rep.addEventListener('change', () => { st.repeats = rep.checked; update(); });
-      ref.repeats = h('label', { class: 'check' }, rep, 'Включать повторные сделки');
-
-      ref.from = dateInput('m-from', 'С даты'); ref.to = dateInput('m-to', 'По дату');
-      for (const el of [ref.from, ref.to]) inputOf(el).addEventListener('change', onCustomRange);
-      ref.compareSel = h('select', { 'aria-label': 'Сравнение' });
-      for (const [k, t] of COMPARE) ref.compareSel.append(h('option', { value: k, text: t }));
-      ref.compareSel.addEventListener('change', () => {
-        st.compare = ref.compareSel.value;
-        if (st.compare === 'custom' && !st.customCompare) st.customCompare = M.comparePeriod(st.range, st.preset, 'prev');
-        update();
-      });
-      ref.cFrom = dateInput('m-cfrom', 'Сравнение с даты'); ref.cTo = dateInput('m-cto', 'Сравнение по дату');
-      for (const el of [ref.cFrom, ref.cTo]) inputOf(el).addEventListener('change', () => {
-        const f = inputOf(ref.cFrom).value, t = inputOf(ref.cTo).value;
-        if (f && t) { st.customCompare = f <= t ? { from: f, to: t } : { from: t, to: f }; update(); }
-      });
-      ref.cBox = h('span', { class: 'dates' }, h('span', { class: 'muted', text: 'сравнить с' }), ref.cFrom, h('span', { 'aria-hidden': 'true', text: '—' }), ref.cTo);
-
-      ref.summary = h('p', { class: 'period-summary' });
-      ref.maturity = h('p', { class: 'maturity', hidden: true });
-      return h('section', { class: 'filters controls', 'aria-label': 'Фильтры' },
-        h('div', { class: 'row' }, presets, h('span', { class: 'dates' }, ref.from, h('span', { 'aria-hidden': 'true', text: '—' }), ref.to), ref.compareSel, ref.cBox),
-        h('div', { class: 'row' }, chips, ref.repeats),
-        ref.summary, ref.maturity);
-    }
-
-    function setPreset(k) {
-      st.preset = k;
-      st.range = M.presetRange(k, dataEnd, dataStart);
-      if (st.range.from < dataStart) st.range.from = dataStart;
-      update();
-    }
-    function onCustomRange() {
-      const f = inputOf(ref.from).value || dataStart, t = inputOf(ref.to).value || dataEnd;
-      st.preset = 'custom';
-      st.range = f <= t ? { from: f, to: t } : { from: t, to: f };
-      update();
-    }
-    function syncControls() {
-      for (const b of ref.presets.children) b.setAttribute('aria-pressed', String(b.dataset.preset === st.preset));
-      inputOf(ref.from).value = st.range.from;
-      inputOf(ref.to).value = st.range.to;
-      ref.compareSel.value = st.compare;
-      ref.cBox.hidden = st.compare !== 'custom';
-      if (cur.cmp) { inputOf(ref.cFrom).value = cur.cmp.from; inputOf(ref.cTo).value = cur.cmp.to; }
-      [...ref.chips.children].forEach((b, i) => b.setAttribute('aria-pressed', String(!st.groups || st.groups.has(meta.groups[i]))));
-      ref.summary.replaceChildren(...[
-        h('span', {}, 'Лиды, созданные ', strong(UI.fmtRange(cur.range))),
-        cur.cmp ? h('span', {}, ' · сравнение: ', strong(UI.fmtRange(cur.cmp))) : null,
-        h('span', { class: 'muted', text: ` · по ${UI.fmtDay(dataEnd)} данные есть` }),
-        cur.cmpNote ? h('span', { class: 'warn', text: ' · ' + cur.cmpNote }) : null].filter(Boolean));
-      // последние дни ещё «дозревают»: дозвон, квал и МС появляются позже создания лида
-      const young = cur.range.to > M.addDays(dataEnd, -7);
-      ref.maturity.hidden = !young;
-      ref.maturity.textContent = 'Последние 7 дней ещё не созрели: дозвон, квал и МС у свежих лидов появляются через несколько дней. Для честного сравнения берите полные недели или месяцы.';
     }
 
     // ---------- обзор: карточки ----------
@@ -467,7 +378,7 @@ window.Marketing = (function () {
       return b;
     }
     function build() {
-      root.append(buildControls());
+      root.append(F.el);
       const nav = h('nav', { class: 'subnav', 'aria-label': 'Разделы' });
       for (const [id, t] of [['overview', 'Обзор'], ['sources', 'Источники'], ['utm', 'UTM'], ['refusals', 'Отказы'], ['requests', 'Заявки на МС'], ['scoring', 'Скоринг']]) {
         nav.append(h('a', { href: '#' + id, text: t, 'data-scroll': id }));
@@ -532,7 +443,7 @@ window.Marketing = (function () {
     function update() {
       root.classList.remove('no-anim');
       compute();
-      syncControls();
+      F.sync(cur);
       renderKpis();
       renderInsights();
       renderFunnel();

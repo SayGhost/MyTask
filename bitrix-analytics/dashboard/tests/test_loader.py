@@ -137,3 +137,135 @@ def test_latest_csv_and_empty_dir(tmp_path):
     a.write_text("x"); b.write_text("y")
     os.utime(a, (1, 1))
     assert loader.latest_csv(tmp_path) == b
+
+
+# ---------- «Общий» дашборд: события и две воронки ----------
+from collections import Counter
+
+from loader import EVENT_FIELDS, choose_files, load_dir, load_files, load_sales, mc_not_held
+from tests.synth import write_sales_csv
+
+SALES_HDR = ["Воронка", "Дата создания", "Дата создания сделки", "Тип сделки", "Источник", "Стадия сделки",
+             "Предполагаемая дата закрытия", "Сумма", "Дата и время МС (квал)", "Причина отказа Продажи", "Итог МС",
+             "SL лид", "Дата изменения SL лида", "Материал, который довел клиента до SL"]
+
+
+def sales_row(**kw):
+    base = {"Воронка": "Продажи", "Дата создания": "10.03.2026", "Дата создания сделки": "01.03.2026", "Тип сделки": "Новая",
+            "Источник": "Автовеб А", "Стадия сделки": "", "Предполагаемая дата закрытия": "", "Сумма": "", "Дата и время МС (квал)": "",
+            "Причина отказа Продажи": "", "Итог МС": "", "SL лид": "Нет", "Дата изменения SL лида": "", "Материал, который довел клиента до SL": ""}
+    base.update(kw)
+    return [base[h] for h in SALES_HDR]
+
+
+def events_of(path, as_of="2026-06-01"):
+    res = load_sales(path, as_of)
+    return [dict(zip(EVENT_FIELDS, e)) for e in res.events], res
+
+
+def test_mc_not_held_rule():
+    assert mc_not_held("Не пришел на БК", "")
+    assert mc_not_held("не вышел на связь", "")
+    assert mc_not_held("Нецелевой", "не пришла/ потом написала не актуально")
+    assert mc_not_held("", "без МС")
+    assert not mc_not_held("Нецелевой", "ЦП")
+    assert not mc_not_held("Отказался от покупки", "изучает материалы")
+
+
+def test_sales_events(tmp_path):
+    f = tmp_path / "s.csv"
+    D = "Дата и время МС (квал)"
+    write_rows(f, [
+        sales_row(**{"Стадия сделки": "3 Сопровождение на доп", D: "05.03.2026 16:00"}),                                 # проведена по стадии
+        sales_row(**{"Стадия сделки": "Отказ", D: "06.03.2026 16:00", "Причина отказа Продажи": "Нецелевой"}),           # отказ, МС была
+        sales_row(**{"Стадия сделки": "Отказ", D: "07.03.2026 16:00", "Причина отказа Продажи": "Не пришел на БК"}),     # МС не состоялась
+        sales_row(**{"Стадия сделки": "Отказ", D: "08.03.2026 16:00", "Причина отказа Продажи": "Нет денег", "Итог МС": "не пришел"}),
+        sales_row(**{"Стадия сделки": "0 МС назначена", D: "20.06.2026 16:00"}),                                         # впереди
+        sales_row(**{"Стадия сделки": "1 Ждет перезнаначения", D: "09.03.2026 16:00"}),                                  # дата прошла
+        sales_row(**{"Стадия сделки": "5 0,1 Греем", "SL лид": "Да", "Дата изменения SL лида": "12.03.2026", "Материал, который довел клиента до SL": "Вебинар 1"}),
+        sales_row(**{"Стадия сделки": "5 0,1 Греем", "SL лид": "Да"}),                                                   # SL без даты
+        sales_row(**{"Стадия сделки": "Отказ", "SL лид": "Нет", "Дата изменения SL лида": "14.03.2026"}),                # вышел из SL
+        sales_row(**{"Стадия сделки": "Передан на обучение", "Предполагаемая дата закрытия": "15.03.2026", "Сумма": "150 000,50"}),
+        sales_row(**{"Стадия сделки": "8 Купил Доп.Продукт", "Предполагаемая дата закрытия": "16.03.2026", "Сумма": "990"}),
+        sales_row(**{"Стадия сделки": "Передан на обучение", "Предполагаемая дата закрытия": "17.03.2026", "Сумма": "1000", "Дата создания сделки": "", "Тип сделки": "Повторная"}),
+    ], header=SALES_HDR)
+    ev, res = events_of(f)
+    by = Counter(e["type"] for e in ev)
+    assert by == Counter(mc_held=2, mc_wait=2, sl_now=2, sl_in=1, sl_out=1, purchase=2, addon=1)
+    assert sorted(e["date"] for e in ev if e["type"] == "mc_held") == ["2026-03-05", "2026-03-06"]
+    waits = sorted(e["date"] for e in ev if e["type"] == "mc_wait")
+    assert waits == ["2026-03-09", "2026-06-20"]
+    sl_in = next(e for e in ev if e["type"] == "sl_in")
+    assert (sl_in["date"], sl_in["lead"], sl_in["matSl"]) == ("2026-03-12", "2026-03-01", "Вебинар 1")
+    assert next(e for e in ev if e["type"] == "sl_now" and e["date"] == "2026-03-10")  # без даты SL берётся дата создания
+    p = [e for e in ev if e["type"] == "purchase"]
+    assert sorted((e["date"], e["amount"], e["isNew"]) for e in p) == [("2026-03-15", 150000.5, 1), ("2026-03-17", 1000.0, 0)]
+    assert [e["lead"] for e in p if e["date"] == "2026-03-17"] == ["2026-03-10"]  # нет даты исходного лида → дата создания копии
+    assert next(e for e in ev if e["type"] == "addon")["amount"] == 990.0
+    assert all(e["group"] == "Вебинарные" for e in ev)
+
+
+def test_mc_held_only_with_date_not_in_future(tmp_path):
+    f = tmp_path / "s.csv"
+    write_rows(f, [
+        sales_row(**{"Стадия сделки": "3 Сопровождение на доп"}),                                                  # даты МС нет
+        sales_row(**{"Стадия сделки": "3 Сопровождение на доп", "Дата и время МС (квал)": "30.12.2026 10:00"}),    # дата в будущем
+    ], header=SALES_HDR)
+    ev, _ = events_of(f, as_of="2026-06-01")
+    assert [e["type"] for e in ev] == ["mc_wait"]  # будущая МС — «ожидает», проведённой не считается
+
+
+def test_consultant_events_and_files_selection(tmp_path):
+    import os
+    a, b, c, d = tmp_path / "a.csv", tmp_path / "b.csv", tmp_path / "c.csv", tmp_path / "d.csv"
+    write_csv(a, n=300)
+    write_sales_csv(b, n=60)
+    write_sales_csv(c, n=10, seed=9)        # второй файл «Продаж»: старый, должен быть пропущен
+    d.write_text("Воронка;Дата создания\nСтоп;01.03.2026\n", encoding="utf-8-sig")  # чужая воронка
+    os.utime(c, (1, 1))
+    chosen, warns = choose_files(tmp_path)
+    assert set(chosen) == {"Консультанты", "Продажи"} and chosen["Продажи"] == b
+    assert any("несколько файлов" in w for w in warns) and any("не распознана" in w for w in warns)
+
+    res = load_dir(tmp_path)
+    types = Counter(res.event_dicts["type"][e[0]] for e in res.event_rows)
+    assert types["lead"] == 300 and types["qual"] > 0 and types["mc_booked"] > 0 and types["purchase"] > 0
+    assert res.meta["hasSales"] and [f["funnel"] for f in res.meta["files"]] == ["Консультанты", "Продажи"]
+    # каждая запись события: все строковые поля — номера из словаря
+    i_date = EVENT_FIELDS.index("date")
+    assert all(0 <= e[i_date] < len(res.event_dicts["date"]) for e in res.event_rows)
+
+
+def test_events_never_contain_personal_data(tmp_path):
+    write_csv(tmp_path / "a.csv", n=100)
+    write_sales_csv(tmp_path / "b.csv", n=100)
+    res = load_dir(tmp_path)
+    blob = json.dumps({"r": res.event_rows, "d": res.event_dicts, "m": res.meta}, ensure_ascii=False)
+    for marker in PII_MARKERS:
+        assert marker not in blob
+
+
+def test_sales_optional_and_missing_cases(tmp_path):
+    # без выгрузки «Продаж»: событий МС проведена/SL/покупок нет, предупреждение есть
+    write_csv(tmp_path / "a.csv", n=50)
+    res = load_dir(tmp_path)
+    assert not res.meta["hasSales"] and any("Нет выгрузки воронки" in w for w in res.meta["warnings"])
+    assert not {"mc_held", "purchase", "sl_in"} & set(res.event_dicts["type"])
+    # без выгрузки «Консультантов»: понятная ошибка
+    only_sales = tmp_path / "x"; only_sales.mkdir()
+    write_sales_csv(only_sales / "s.csv", n=20)
+    with pytest.raises(LoadError) as e:
+        load_dir(only_sales)
+    assert "Консультанты" in str(e.value)
+
+
+def test_events_before_lead_creation_are_dropped_and_reported(tmp_path):
+    # колонки: создана, источник, тип, статус, причина, вебинар, квал, МС
+    write_rows(tmp_path / "a.csv", [
+        ["10.03.2026", "Автовеб А", "Новая", "1 Не обработан", "", "", "01.03.2026", ""],  # квал раньше создания лида
+        ["11.03.2026", "Автовеб А", "Новая", "1 Не обработан", "", "", "12.03.2026", ""],  # нормальный квал
+    ])
+    res = load_dir(tmp_path)
+    kinds = Counter(res.event_dicts["type"][e[0]] for e in res.event_rows)
+    assert kinds["lead"] == 2 and kinds["qual"] == 1
+    assert any("раньше создания лида" in w and "квал — 1" in w for w in res.meta["warnings"])

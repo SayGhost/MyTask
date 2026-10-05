@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import settings
-from loader import FIELDS, LoadError, latest_csv, load_deals
+from loader import EVENT_FIELDS, FIELDS, LoadError, choose_files, detect_funnel, load_files
 
 STATIC_DIR = Path(__file__).parent / "static"
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -24,23 +24,33 @@ CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline
 
 
 class DataStore:
-    """Хранит разобранную выгрузку и перечитывает файл, если он изменился."""
+    """Хранит разобранные выгрузки и перечитывает файлы, если они изменились."""
 
-    def __init__(self, file: Path | None = None):
-        self._file = file
+    def __init__(self, files: list[Path] | None = None):
+        self._files = files
         self._lock = threading.Lock()
         self._key = None
         self._payload: dict = {}
 
+    def _choose(self):
+        if not self._files:
+            return choose_files(settings.DATA_DIR)
+        chosen = {}
+        for p in self._files:
+            chosen[detect_funnel(p) or settings.CONSULT_FUNNEL] = p
+        return chosen, []
+
     def get(self) -> dict:
         with self._lock:
             try:
-                path = self._file or latest_csv(settings.DATA_DIR)
-                st = path.stat()
-                key = (str(path), st.st_mtime_ns, st.st_size)
+                chosen, warnings = self._choose()
+                key = tuple(sorted((k, str(p), p.stat().st_mtime_ns, p.stat().st_size) for k, p in chosen.items()))
                 if key != self._key:
-                    result = load_deals(path)
-                    self._payload = {"fields": FIELDS, "dicts": result.dicts, "rows": result.rows, "meta": result.meta}
+                    result = load_files(chosen, warnings)
+                    self._payload = {
+                        "fields": FIELDS, "dicts": result.dicts, "rows": result.rows, "meta": result.meta,
+                        "events": {"fields": EVENT_FIELDS, "dicts": result.event_dicts, "rows": result.event_rows},
+                    }
                     self._key = key
             except (LoadError, OSError) as e:
                 self._key = None
@@ -83,7 +93,7 @@ def make_handler(store: DataStore):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Локальный дашборд по выгрузке Битрикс24")
     parser.add_argument("--port", type=int, default=settings.PORT)
-    parser.add_argument("--file", type=Path, help="CSV-файл (по умолчанию самый свежий из папки data)")
+    parser.add_argument("--file", type=Path, action="append", help="CSV-файл выгрузки (можно указать несколько раз; по умолчанию берутся свежие файлы из папки data)")
     parser.add_argument("--no-browser", action="store_true", help="не открывать браузер")
     args = parser.parse_args()
 

@@ -54,8 +54,9 @@ def write_csv(path: Path, n: int = 1500, seed: int = 1, encoding: str = "utf-8-s
                 "Новая" if new else "Повторная", status, reason, d(web), d(qual),
                 created.strftime("%d.%m.%Y 16:00") if mc else "", d(qual and rnd.random() < 0.6),
                 utm[0], utm[1], utm[2], f"{utm[2]}_{rnd.randrange(4)}" if utm[2] else "", "",
-                rnd.choice(["1★", "2★", "3★", "4★", "5★"]) if qual and rnd.random() < 0.5 else "",
-                rnd.choice("ABCDF") if mc and rnd.random() < 0.3 else "",
+                # до 15.06 оценивали буквами A–F (старая шкала), потом звёздами (новая)
+                rnd.choice(["1★", "2★", "3★", "4★", "5★"]) if qual and created >= date(2026, 6, 15) and rnd.random() < 0.8 else "",
+                rnd.choice("ABCDEF") if qual and created < date(2026, 6, 15) and rnd.random() < 0.8 else "",
                 str(rnd.randrange(-3, 10)) if seg else "", seg, portrait,
                 PII_MARKERS[0], PII_MARKERS[1], PII_MARKERS[2], "01.01.2000",
             ])

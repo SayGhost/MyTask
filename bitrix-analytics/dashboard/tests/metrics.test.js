@@ -112,3 +112,11 @@ test('autoGranularity', () => {
   assert.equal(M.autoGranularity('2024-01-01', '2026-10-05'), 'month');
 });
 
+
+test('scoreLabel: звёзды (новая шкала) приоритетнее A–F (старая), старые оценки не теряются', () => {
+  assert.equal(M.scoreLabel({ stars: '4★', grade: '' }), '4★');
+  assert.equal(M.scoreLabel({ stars: '', grade: 'b' }), 'B');
+  assert.equal(M.scoreLabel({ stars: '3★', grade: 'D' }), '3★');
+  assert.equal(M.scoreLabel({ stars: '', grade: '' }), null);
+  assert.deepEqual(M.GRADE_ORDER.concat(M.STAR_ORDER).length, 11);
+});

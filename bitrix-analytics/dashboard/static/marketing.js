@@ -20,8 +20,9 @@ window.Marketing = (function () {
     { key: 'mc', label: 'МС назначено', value: (t) => t.mc, rate: (r) => r.mcFromQual, rateText: 'из квалов' },
   ];
   const SCORE_DIMS = [
-    { id: 'stars', label: 'Звёзды ★', field: 'stars', ordinal: 'asc', order: ['1★', '2★', '3★', '4★', '5★'] },
-    { id: 'grade', label: 'Оценка A–F', field: 'grade', ordinal: 'desc', order: ['A', 'B', 'C', 'D', 'E', 'F'] },
+    { id: 'score', label: 'Оценка: все шкалы', combined: true, order: [...M.GRADE_ORDER, ...M.STAR_ORDER] },
+    { id: 'stars', label: 'Звёзды ★ (новая)', field: 'stars', ordinal: 'fixed', order: M.STAR_ORDER },
+    { id: 'grade', label: 'A–F (старая)', field: 'grade', ordinal: 'fixed', order: M.GRADE_ORDER },
     { id: 'band', label: 'Балл', field: 'band', ordinal: 'asc', order: ['до 0', '1–3', '4–6', '7 и выше'] },
     { id: 'segment', label: 'Сегмент', field: 'segment' },
     { id: 'expert', label: 'Эксперты', field: 'portrait', prefix: 'Эксперт - ' },
@@ -39,7 +40,7 @@ window.Marketing = (function () {
     const st = {
       preset: 'lastWeek', range: M.presetRange('lastWeek', dataEnd, dataStart), compare: 'prev', customCompare: null,
       groups: null, repeats: false, gran: 'auto', table: { leads: false, rates: false },
-      scoreDim: 'segment', scorePct: false, tree: {}, prevNums: {},
+      scoreDim: 'score', scorePct: false, tree: {}, prevNums: {},
     };
     const root = h('div', { class: 'dash' });
     const ref = {};
@@ -419,6 +420,7 @@ window.Marketing = (function () {
     function renderScoring() {
       const dim = SCORE_DIMS.find((d) => d.id === st.scoreDim);
       const keyOf = (d) => {
+        if (dim.combined) return M.scoreLabel(d);
         const v = d[dim.field];
         if (!v) return null;
         if (dim.prefix) return v.startsWith(dim.prefix) ? v.slice(dim.prefix.length) : null;
@@ -426,17 +428,23 @@ window.Marketing = (function () {
       };
       const scored = base().filter((d) => keyOf(d) !== null);
       const counts = M.countBy(scored, keyOf);
-      let keys = dim.order ? dim.order.filter((k) => counts.some((c) => c.key === k)) : counts.map((c) => c.key);
-      keys = dim.order ? keys.concat(counts.map((c) => c.key).filter((k) => !keys.includes(k))) : keys;
+      const present = (k) => counts.some((c) => c.key === k);
+      let keys = dim.order ? dim.order.filter(present) : counts.map((c) => c.key);
+      if (dim.order) keys = keys.concat(counts.map((c) => c.key).filter((k) => !keys.includes(k)));
+      // Цвета закреплены за значением: звёзды синие (темнее = выше), старые A–F серые (темнее = лучше)
+      const isStar = (k) => k.includes('★'), isGrade = (k) => M.GRADE_ORDER.includes(k);
       const colorFor = (k, i, n) => {
-        if (dim.ordinal) {
-          const pos = n > 1 ? Math.round((i * 5) / (n - 1)) : 3;
-          return `var(--o${(dim.ordinal === 'desc' ? 5 - pos : pos) + 1})`;
-        }
+        if (isStar(k)) return `var(--o${M.STAR_ORDER.indexOf(k) + 1})`;
+        if (isGrade(k)) return `var(--g${6 - M.GRADE_ORDER.indexOf(k)})`;
+        if (dim.ordinal === 'asc') return `var(--o${(n > 1 ? Math.round((i * 5) / (n - 1)) : 3) + 1})`;
         return CAT_COLORS[i % CAT_COLORS.length];
       };
       const series = keys.map((k, i) => ({ key: k, label: k, color: colorFor(k, i, keys.length) }));
-      ref.scoreLegend.replaceChildren(...series.map((sr) => h('span', {}, h('i', { class: 'sw', style: 'background:' + sr.color }), sr.label)));
+      const swatch = (sr) => h('span', {}, h('i', { class: 'sw', style: 'background:' + sr.color }), sr.label);
+      const stars = series.filter((x) => isStar(x.key)), grades = series.filter((x) => isGrade(x.key));
+      ref.scoreLegend.replaceChildren(...(dim.combined && stars.length && grades.length
+        ? [h('span', { class: 'lg-title', text: 'Старая шкала' }), ...grades.map(swatch), h('span', { class: 'lg-title', text: 'Новая шкала' }), ...stars.map(swatch)]
+        : series.map(swatch)));
       const weekFrom = M.addDays(M.bucketStart(dataEnd, 'week'), -7 * 11), monthFrom = M.addMonths(dataEnd, -5);
       const draw = (box, gran, from) => {
         const buckets = M.seriesBy(scored, gran, from, dataEnd, keyOf);
@@ -516,7 +524,7 @@ window.Marketing = (function () {
             card('Откуда пришли заявки на МС', 'По UTM source, поле «Оставил заявку на МС»', ref.reqBars),
             card('Заявки на МС по UTM', 'Дерево меток', ref.reqTree))),
         section('m-scoring', 'Скоринг',
-          withTools(card('Скоринг по дате создания лида', 'Последние 12 недель и 6 месяцев, не зависит от выбранного периода. Неполный период бледнее', ref.scoreDims, ref.scoreLegend,
+          withTools(card('Скоринг по дате создания лида', 'Последние 12 недель и 6 месяцев, не зависит от выбранного периода. «Оценка: все шкалы» показывает вместе старую (A–F, серым) и новую (звёзды, синим) шкалы. Неполный период бледнее', ref.scoreDims, ref.scoreLegend,
             h('div', { class: 'grid-2' }, h('div', {}, h('h3', { text: 'По неделям' }), ref.scoreWeek), h('div', {}, h('h3', { text: 'По месяцам' }), ref.scoreMonth))),
             h('label', { class: 'check' }, pct, 'В процентах'))));
     }

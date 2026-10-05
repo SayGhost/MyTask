@@ -193,6 +193,15 @@
     return out;
   }
 
+  /** Оценка лида в любой из шкал: новая (звёзды) важнее старой (A–F). Нет оценки: null. */
+  const STAR_ORDER = ['1★', '2★', '3★', '4★', '5★'];
+  const GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'F'];
+  function scoreLabel(d) {
+    const stars = (d.stars || '').trim(), grade = (d.grade || '').trim().toUpperCase();
+    if (stars) return stars;
+    return grade || null;
+  }
+
   /** Подсчёт по значению поля, по убыванию. */
   function countBy(deals, keyFn) {
     const map = new Map();
@@ -233,7 +242,7 @@
   }
 
   return {
-    decode, filterDeals, summarize, rates, ratio, delta, deltaPP, series, seriesBy, countBy, buildTree,
+    decode, filterDeals, summarize, scoreLabel, STAR_ORDER, GRADE_ORDER, rates, ratio, delta, deltaPP, series, seriesBy, countBy, buildTree,
     bucketStart, nextBucket, bucketEnd, autoGranularity, presetRange, comparePeriod, addDays, addMonths, daysBetween,
   };
 });

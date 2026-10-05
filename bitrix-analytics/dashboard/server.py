@@ -40,7 +40,7 @@ class DataStore:
                 key = (str(path), st.st_mtime_ns, st.st_size)
                 if key != self._key:
                     result = load_deals(path)
-                    self._payload = {"fields": FIELDS, "rows": result.rows, "meta": result.meta}
+                    self._payload = {"fields": FIELDS, "dicts": result.dicts, "rows": result.rows, "meta": result.meta}
                     self._key = key
             except (LoadError, OSError) as e:
                 self._key = None

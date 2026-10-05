@@ -31,6 +31,7 @@ def test_api_returns_compact_rows_without_personal_data(base_url):
     data = json.loads(body)
     assert status == 200
     assert data["fields"][0] == "created" and len(data["rows"]) == 120
+    assert "group" in data["dicts"] and data["meta"]["groups"][-1] == "Другое"
     for marker in PII_MARKERS:
         assert marker.encode() not in body
     assert "connect-src 'self'" in headers["Content-Security-Policy"]

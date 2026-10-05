@@ -3,136 +3,40 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Воронка по источникам</title>
+<title>Аналитика</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <div>
-      <h1>Воронка по источникам</h1>
-      <p class="sub" id="subtitle">Атрибуция по дате создания сделки</p>
-    </div>
-    <div class="top-actions">
-      <button class="btn" id="reload" type="button">Обновить данные</button>
-      <button class="btn" id="theme" type="button">Тема</button>
-    </div>
-  </header>
-
-  <div id="app" hidden>
-    <section class="filters" aria-label="Фильтры">
-      <div class="seg" id="presets" role="group" aria-label="Период">
-        <button type="button" data-preset="7">7 дней</button>
-        <button type="button" data-preset="30">30 дней</button>
-        <button type="button" data-preset="90">90 дней</button>
-        <button type="button" data-preset="month">Этот месяц</button>
-        <button type="button" data-preset="all">Всё время</button>
+<div class="bg" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="app" id="app">
+  <nav class="rail" aria-label="Дашборды">
+    <div class="rail-logo" id="logo" aria-hidden="true"></div>
+    <div class="rail-items" id="rail"></div>
+  </nav>
+  <div class="panel main-panel">
+    <header class="top">
+      <div class="brand">
+        <h1 id="title">Аналитика</h1>
+        <p class="sub" id="subtitle"></p>
       </div>
-      <div class="dates">
-        <label for="from" class="sr-only">С даты</label><input type="date" id="from">
-        <span aria-hidden="true">—</span>
-        <label for="to" class="sr-only">По дату</label><input type="date" id="to">
+      <div class="top-actions">
+        <button class="btn icon-btn" id="reload" type="button" title="Перечитать файл выгрузки"></button>
       </div>
-      <details class="dropdown" id="sources-dd">
-        <summary id="sources-summary">Источники: все</summary>
-        <div class="dropdown-panel">
-          <div class="dropdown-tools">
-            <button class="linkbtn" type="button" id="src-all">Выбрать все</button>
-            <button class="linkbtn" type="button" id="src-none">Снять все</button>
-          </div>
-          <div id="sources-list"></div>
-        </div>
-      </details>
-      <label class="check"><input type="checkbox" id="only-new" checked> Только новые сделки</label>
-    </section>
-
-    <section class="kpis" id="kpis" aria-label="Ключевые показатели"></section>
-
-    <div class="grid-2">
-      <section class="card">
-        <div class="card-head">
-          <div>
-            <h2>Путь сделок по этапам</h2>
-            <p class="hint">Сколько сделок дошло до этапа и какая это доля от всех сделок периода</p>
-          </div>
-        </div>
-        <div class="chart" id="funnel"></div>
-      </section>
-      <section class="card">
-        <div class="card-head">
-          <div>
-            <h2>Сделки по времени создания</h2>
-            <p class="hint" id="count-hint">Сколько сделок создано в каждом периоде</p>
-          </div>
-          <div class="card-tools">
-            <label class="sr-only" for="gran">Шаг</label>
-            <select id="gran">
-              <option value="auto">Шаг: авто</option>
-              <option value="day">По дням</option>
-              <option value="week">По неделям</option>
-              <option value="month">По месяцам</option>
-            </select>
-            <button class="btn" type="button" data-table-toggle="count">Таблица</button>
-          </div>
-        </div>
-        <div class="chart" id="trend-count"></div>
-      </section>
-    </div>
-
-    <section class="card">
-      <div class="card-head">
-        <div>
-          <h2>Конверсии от сделок по времени создания</h2>
-          <p class="hint">Доля от сделок, созданных в периоде. Свежие периоды ещё не дошли до всех этапов, поэтому их проценты занижены</p>
-        </div>
-        <div class="card-tools"><button class="btn" type="button" data-table-toggle="rates">Таблица</button></div>
-      </div>
-      <div class="legend" id="rates-legend"></div>
-      <div class="chart" id="trend-rates"></div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <div>
-          <h2>Квал → МС по времени создания</h2>
-          <p class="hint">Показаны периоды, где не меньше 10 квалов, иначе процент случайный</p>
-        </div>
-        <div class="card-tools"><button class="btn" type="button" data-table-toggle="qualmc">Таблица</button></div>
-      </div>
-      <div class="chart" id="trend-qualmc"></div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <div>
-          <h2>Источники</h2>
-          <p class="hint">Нажмите на заголовок столбца, чтобы отсортировать</p>
-        </div>
-      </div>
-      <div class="table-wrap" id="source-table"></div>
-    </section>
-
-    <section class="card notes">
-      <details>
-        <summary>Как считаются показатели</summary>
-        <ul>
-          <li><b>Атрибуция</b>: сделка относится к периоду по дате создания, а все её этапы считаются в этом же периоде, когда бы они ни произошли.</li>
-          <li><b>Новые сделки</b>: тип сделки «Новая». Переключатель «Только новые сделки» включает в расчёт и повторные.</li>
-          <li><b>Посмотрели вебинар</b>: заполнена дата посещения вебинара. <b>Доходимость</b> = посмотрели вебинар / сделки.</li>
-          <li><b>Дозвонились</b>: заполнена дата диалога или в любой из трёх колонок дозвона стоит «Да».</li>
-          <li><b>Квалы</b>: заполнена дата квала. <b>МС назначено</b>: заполнена дата и время МС.</li>
-          <li><b>Квал → МС</b> = сделки, где есть и квал, и МС / сделки с квалом.</li>
-        </ul>
-        <p class="meta" id="file-meta"></p>
-      </details>
-    </section>
+    </header>
+    <main id="view"></main>
+    <p class="meta" id="file-meta"></p>
   </div>
-
-  <div id="error" class="error" hidden></div>
+</div>
+<div class="switcher" id="switcher" role="group" aria-label="Оформление">
+  <i class="sw-ind" aria-hidden="true"></i>
+  <button type="button" data-skin="glass">Тёмная</button>
+  <button type="button" data-skin="light">Светлая</button>
 </div>
 <div id="tip" role="tooltip"></div>
 <script src="/metrics.js"></script>
+<script src="/ui.js"></script>
+<script src="/marketing.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

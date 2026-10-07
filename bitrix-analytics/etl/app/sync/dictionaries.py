@@ -134,34 +134,45 @@ def _label(value) -> str | None:
     return nz(value)
 
 
-def sync_userfields(conn: psycopg.Connection, client: BitrixClient) -> int:
+USERFIELD_METHODS = {"deal": "crm.deal.userfield.list", "contact": "crm.contact.userfield.list"}
+
+
+def sync_userfields(conn: psycopg.Connection, client: BitrixClient, entity: str = "deal") -> int:
     fields = {}
-    for page in client.iter_offset("crm.deal.userfield.list", {"order": {"SORT": "ASC"}}):
+    for page in client.iter_offset(USERFIELD_METHODS[entity], {"order": {"SORT": "ASC"}}):
         for f in page:
             name = nz(f.get("FIELD_NAME"))
             if name is None:
                 continue
             label = _label(f.get("EDIT_FORM_LABEL")) or _label(f.get("LIST_COLUMN_LABEL")) or name
             enum = f.get("LIST")
-            fields[name] = (name, label, nz(f.get("USER_TYPE_ID")),
+            fields[name] = (entity, name, label, nz(f.get("USER_TYPE_ID")),
                             Jsonb(enum) if isinstance(enum, list) else None)
 
     with conn.transaction():
         with conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO dim_userfield (field_name, label, user_type, enum_values) "
-                "VALUES (%s, %s, %s, %s) ON CONFLICT (field_name) DO UPDATE SET "
+                "INSERT INTO dim_userfield (entity, field_name, label, user_type, enum_values) "
+                "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (entity, field_name) DO UPDATE SET "
                 "label = EXCLUDED.label, user_type = EXCLUDED.user_type, "
                 "enum_values = EXCLUDED.enum_values, updated_at = now()",
                 list(fields.values()),
             )
-        _replace_missing(conn, "dim_userfield", "field_name", list(fields), "text")
+        if fields:
+            conn.execute(
+                "DELETE FROM dim_userfield WHERE entity = %s AND field_name <> ALL(%s::text[])",
+                (entity, list(fields)),
+            )
     return len(fields)
+
+
+def sync_contact_userfields(conn: psycopg.Connection, client: BitrixClient) -> int:
+    return sync_userfields(conn, client, "contact")
 
 
 def sync_dictionaries(conn: psycopg.Connection, client: BitrixClient) -> int:
     total = 0
-    for step in (sync_categories, sync_statuses, sync_users, sync_userfields):
+    for step in (sync_categories, sync_statuses, sync_users, sync_userfields, sync_contact_userfields):
         n = step(conn, client)
         log.info("%s: %d строк", step.__name__, n)
         total += n

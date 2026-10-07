@@ -78,7 +78,7 @@ docker compose up -d --build
 docker compose logs -f etl
 ```
 
-Ожидаемо: строки `dictionaries: готово`, `deals: готово (full, N строк)`, `stage_history: готово`.
+Ожидаемо: строки `dictionaries: готово`, `deals: готово (full, N строк)`, `contacts: готово (full, N строк)`. История стадий по умолчанию выключена (`SYNC_STAGE_HISTORY=false`), в логе будет «stage_history: пропущено».
 
 Сколько загружено и нет ли ошибок:
 

@@ -11,7 +11,7 @@ import psycopg
 from .. import db
 from ..bitrix.client import BitrixClient
 from ..config import Settings
-from . import deals, stage_history
+from . import contacts, deals, stage_history
 from .dictionaries import sync_dictionaries
 
 log = logging.getLogger(__name__)
@@ -50,10 +50,21 @@ def run_sync(settings: Settings, client: BitrixClient, full: bool = False) -> bo
                 conn, "deals", mode,
                 lambda: deals.sync_deals(conn, client, settings.modify_overlap_minutes, full=full),
             )
-            ok &= _run_step(
-                conn, "stage_history", mode,
-                lambda: stage_history.sync_stage_history(conn, client, full=full),
-            )
+            if settings.sync_contacts:
+                ok &= _run_step(
+                    conn, "contacts", mode,
+                    lambda: contacts.sync_contacts(
+                        conn, client, settings.modify_overlap_minutes, full=full,
+                        keep_personal=settings.keep_contact_personal_data,
+                    ),
+                )
+            if settings.sync_stage_history:
+                ok &= _run_step(
+                    conn, "stage_history", mode,
+                    lambda: stage_history.sync_stage_history(conn, client, full=full),
+                )
+            else:
+                log.info("stage_history: пропущено (SYNC_STAGE_HISTORY=false)")
             return ok
         finally:
             conn.close()
@@ -70,10 +81,16 @@ def run_reconcile(settings: Settings, client: BitrixClient) -> bool:
         conn = db.connect(settings.database_url)
         try:
             db.apply_migrations(conn)
-            return _run_step(
+            ok = _run_step(
                 conn, "deals_reconcile", "full",
                 lambda: ("full", deals.reconcile_deleted(conn, client)),
             )
+            if settings.sync_contacts:
+                ok &= _run_step(
+                    conn, "contacts_reconcile", "full",
+                    lambda: ("full", contacts.reconcile_deleted(conn, client)),
+                )
+            return ok
         finally:
             conn.close()
     finally:

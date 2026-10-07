@@ -6,11 +6,11 @@ import pytest
 from app import db
 from app.bitrix.client import BitrixError
 from app.config import Settings
-from app.sync import deals, stage_history
+from app.sync import contacts, deals, stage_history
 from app.sync.dictionaries import sync_dictionaries
 from app.sync.runner import run_reconcile, run_sync
 from tests.conftest import TEST_DB
-from tests.fake_bitrix import deal
+from tests.fake_bitrix import contact, deal
 
 
 def scalar(conn, sql, *args):
@@ -19,7 +19,7 @@ def scalar(conn, sql, *args):
 
 def test_migrations_are_idempotent(conn):
     assert db.apply_migrations(conn) == []
-    assert scalar(conn, "SELECT count(*) FROM schema_migrations") == 1
+    assert scalar(conn, "SELECT count(*) FROM schema_migrations") == 2
 
 
 def test_dictionaries(conn, fake, client):
@@ -134,13 +134,70 @@ def test_stage_history_is_incremental(conn, fake, client):
     assert scalar(conn, "SELECT count(*) FROM fact_stage_history WHERE deal_id = 11") == 2
 
 
-def test_run_sync_logs_steps_and_survives_step_failure(conn, fake, client, monkeypatch):
+def test_run_sync_skips_stage_history_by_default(conn, fake, client):
     settings = Settings(webhook_url="https://x/rest/1/a/", database_url=TEST_DB, min_request_interval=0)
+    fake.deals = [deal(1)]
+    fake.contacts = [contact(7)]
+
+    assert run_sync(settings, client) is True
+    entities = [r[0] for r in conn.execute("SELECT entity FROM sync_log ORDER BY id").fetchall()]
+    assert entities == ["dictionaries", "deals", "contacts"]
+    assert scalar(conn, "SELECT count(*) FROM fact_stage_history") == 0
+
+
+def test_contacts_sync_drops_personal_data_and_keeps_custom_fields(conn, fake, client):
+    fake.contacts = [contact(7), contact(8, UF_CRM_CITY="Москва")]
+    fake.contact_userfields = [
+        {"FIELD_NAME": "UF_CRM_CITY", "USER_TYPE_ID": "string", "EDIT_FORM_LABEL": {"ru": "Город"}},
+    ]
+    fake.userfields = [{"FIELD_NAME": "UF_CRM_CITY", "USER_TYPE_ID": "string", "EDIT_FORM_LABEL": {"ru": "Город сделки"}}]
+
+    assert contacts.sync_contacts(conn, client) == ("full", 2)
+    assert scalar(conn, "SELECT user_fields->>'UF_CRM_CITY' FROM fact_contact WHERE id = 8") == "Москва"
+    assert scalar(conn, "SELECT source_id FROM fact_contact WHERE id = 7") == "WEB"
+    stored = scalar(conn, "SELECT raw::text FROM fact_contact WHERE id = 7")
+    for secret in ("Иван", "Иванов", "+70000000000", "x@example.com"):
+        assert secret not in stored
+
+    # поля контактов и сделок с одним кодом не затирают друг друга
+    from app.sync.dictionaries import sync_contact_userfields, sync_userfields
+    sync_userfields(conn, client)
+    sync_contact_userfields(conn, client)
+    assert scalar(conn, "SELECT label FROM dim_userfield WHERE entity = 'deal' AND field_name = 'UF_CRM_CITY'") == "Город сделки"
+    assert scalar(conn, "SELECT label FROM dim_userfield WHERE entity = 'contact' AND field_name = 'UF_CRM_CITY'") == "Город"
+
+
+def test_contacts_incremental_and_personal_data_opt_in(conn, fake, client):
+    fake.contacts = [contact(1), contact(2)]
+    assert contacts.sync_contacts(conn, client) == ("full", 2)
+
+    fake.contacts.append(contact(3, modified="2025-03-05T10:00:00+03:00"))
+    fake.contacts[0] = contact(1, modified="2025-03-06T10:00:00+03:00", UF_CRM_CITY="Сочи")
+    # контакт 2 не менялся, но попадает в окно перекрытия (10 минут) — повторная загрузка безопасна
+    assert contacts.sync_contacts(conn, client, keep_personal=True) == ("incremental", 3)
+    assert scalar(conn, "SELECT user_fields->>'UF_CRM_CITY' FROM fact_contact WHERE id = 1") == "Сочи"
+    assert "Иван" in scalar(conn, "SELECT raw::text FROM fact_contact WHERE id = 1")
+
+
+def test_contacts_reconcile_marks_deleted(conn, fake, client):
+    fake.contacts = [contact(1), contact(2)]
+    contacts.sync_contacts(conn, client)
+    fake.contacts = [contact(1)]
+    assert contacts.reconcile_deleted(conn, client) == 1
+    assert scalar(conn, "SELECT is_deleted FROM fact_contact WHERE id = 2") is True
+
+
+def test_run_sync_logs_steps_and_survives_step_failure(conn, fake, client, monkeypatch):
+    settings = Settings(
+        webhook_url="https://x/rest/1/a/", database_url=TEST_DB, min_request_interval=0, sync_stage_history=True
+    )
     fake.deals = [deal(1)]
 
     assert run_sync(settings, client) is True
     rows = conn.execute("SELECT entity, status, rows_processed FROM sync_log ORDER BY id").fetchall()
-    assert [(r[0], r[1]) for r in rows] == [("dictionaries", "ok"), ("deals", "ok"), ("stage_history", "ok")]
+    assert [(r[0], r[1]) for r in rows] == [
+        ("dictionaries", "ok"), ("deals", "ok"), ("contacts", "ok"), ("stage_history", "ok")
+    ]
     assert rows[1][2] == 1
 
     # справочники падают (нет прав), но сделки и история всё равно загружаются
@@ -155,8 +212,8 @@ def test_run_sync_logs_steps_and_survives_step_failure(conn, fake, client, monke
     fake.deals.append(deal(2, modified="2025-03-04T10:00:00+03:00"))
 
     assert run_sync(settings, client) is False
-    last = conn.execute("SELECT entity, status, error FROM sync_log ORDER BY id DESC LIMIT 3").fetchall()
-    assert {r[0]: r[1] for r in last} == {"dictionaries": "error", "deals": "ok", "stage_history": "ok"}
+    last = conn.execute("SELECT entity, status, error FROM sync_log ORDER BY id DESC LIMIT 4").fetchall()
+    assert {r[0]: r[1] for r in last} == {"dictionaries": "error", "deals": "ok", "contacts": "ok", "stage_history": "ok"}
     assert "ACCESS_DENIED" in next(r[2] for r in last if r[0] == "dictionaries")
     assert scalar(conn, "SELECT count(*) FROM fact_deal") == 2
 

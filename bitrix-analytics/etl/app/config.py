@@ -10,6 +10,13 @@ class ConfigError(Exception):
     pass
 
 
+def _flag(env: dict[str, str], name: str, default: bool) -> bool:
+    value = env.get(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 @dataclass(frozen=True)
 class Settings:
     webhook_url: str
@@ -18,6 +25,9 @@ class Settings:
     reconcile_hour: int = 3
     min_request_interval: float = 0.5
     modify_overlap_minutes: int = 10
+    sync_stage_history: bool = False
+    sync_contacts: bool = True
+    keep_contact_personal_data: bool = False
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> "Settings":
@@ -50,4 +60,7 @@ class Settings:
             reconcile_hour=int(env.get("RECONCILE_HOUR", "3")),
             min_request_interval=float(env.get("BITRIX_MIN_INTERVAL_SEC", "0.5")),
             modify_overlap_minutes=int(env.get("MODIFY_OVERLAP_MINUTES", "10")),
+            sync_stage_history=_flag(env, "SYNC_STAGE_HISTORY", False),
+            sync_contacts=_flag(env, "SYNC_CONTACTS", True),
+            keep_contact_personal_data=_flag(env, "SYNC_CONTACT_PERSONAL_DATA", False),
         )

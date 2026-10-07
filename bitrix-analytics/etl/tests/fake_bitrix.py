@@ -15,6 +15,8 @@ class FakeBitrix:
         self.statuses: list[dict] = []
         self.users: list[dict] = []
         self.userfields: list[dict] = []
+        self.contacts: list[dict] = []
+        self.contact_userfields: list[dict] = []
         self.categories: list[dict] = [{"id": 1, "name": "Продажи", "sort": 100, "isDefault": False}]
         self.calls: list[tuple[str, dict]] = []
         self.fail_next = 0  # столько ближайших вызовов вернут 503 QUERY_LIMIT_EXCEEDED
@@ -69,6 +71,12 @@ class FakeBitrix:
     def m_crm_deal_list(self, params):
         return self._keyset(self.deals, params, None)
 
+    def m_crm_contact_list(self, params):
+        return self._keyset(self.contacts, params, None)
+
+    def m_crm_contact_userfield_list(self, params):
+        return self._offset(self.contact_userfields, params)
+
     def m_crm_stagehistory_list(self, params):
         return self._keyset(self.history, params, "items")
 
@@ -84,6 +92,18 @@ class FakeBitrix:
 
     def m_crm_deal_userfield_list(self, params):
         return self._offset(self.userfields, params)
+
+
+def contact(id: int, modified: str = "2025-03-01T10:00:00+03:00", **extra) -> dict:
+    base = {
+        "ID": str(id), "NAME": "Иван", "LAST_NAME": "Иванов", "PHONE": [{"VALUE": "+70000000000"}],
+        "EMAIL": [{"VALUE": "x@example.com"}], "TYPE_ID": "CLIENT", "SOURCE_ID": "WEB",
+        "ASSIGNED_BY_ID": "5", "COMPANY_ID": "0", "LEAD_ID": None,
+        "DATE_CREATE": "2025-02-01T09:00:00+03:00", "DATE_MODIFY": modified,
+        "UF_CRM_CITY": "Казань",
+    }
+    base.update(extra)
+    return base
 
 
 def deal(id: int, modified: str = "2025-03-01T10:00:00+03:00", **extra) -> dict:
